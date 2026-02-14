@@ -1,4 +1,4 @@
-import { Client } from "@libsql/client";
+import { Client } from "@libsql/client/web";
 
 interface CinemaSeed {
   allocine_code: string;

@@ -1,5 +1,5 @@
 import { getDb } from "./index";
-import { InValue } from "@libsql/client";
+import { InValue } from "@libsql/client/web";
 
 export interface MovieFilters {
   date?: string | null;
