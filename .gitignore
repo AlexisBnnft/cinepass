@@ -30,11 +30,17 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+!.env.example
 
 # vercel
 .vercel
+
+# database
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
 
 # typescript
 *.tsbuildinfo
