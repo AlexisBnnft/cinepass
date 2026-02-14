@@ -164,7 +164,7 @@ const displayedMovies = showFavoritesOnly
         {loading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl h-36 animate-pulse" />
+              <div key={i} className="bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl h-36 animate-pulse" />
             ))}
           </div>
         ) : displayedMovies.length === 0 ? (

@@ -44,7 +44,7 @@ export function TimeRangeFilter({ timeMin, timeMax, onChange }: TimeRangeFilterP
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
                 isActive
                   ? "bg-indigo-600 text-white"
-                  : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                  : "bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
               {preset.label}
@@ -61,7 +61,7 @@ export function TimeRangeFilter({ timeMin, timeMax, onChange }: TimeRangeFilterP
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
             isCustom
               ? "bg-indigo-600 text-white"
-              : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+              : "bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
           }`}
         >
           Personnaliser
@@ -69,21 +69,21 @@ export function TimeRangeFilter({ timeMin, timeMax, onChange }: TimeRangeFilterP
       </div>
       {isCustom && (
         <div className="flex items-center gap-2 mt-2">
-          <label className="text-xs text-gray-500">De</label>
+          <label className="text-xs text-gray-400 dark:text-gray-500">De</label>
           <select
             value={timeMin || "06:00"}
             onChange={(e) => onChange(e.target.value, timeMax || "23:00")}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             {HOURS.map((h) => (
               <option key={h.value} value={h.value}>{h.label}</option>
             ))}
           </select>
-          <label className="text-xs text-gray-500">à</label>
+          <label className="text-xs text-gray-400 dark:text-gray-500">à</label>
           <select
             value={timeMax || "23:00"}
             onChange={(e) => onChange(timeMin || "06:00", e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             {HOURS.filter((h) => h.value >= (timeMin || "06:00")).map((h) => (
               <option key={h.value} value={h.value}>{h.label}</option>

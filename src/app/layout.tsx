@@ -18,8 +18,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr">
-      <body className={`${geist.variable} font-sans antialiased bg-gray-950 text-white`}>
+    <html lang="fr" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("theme")==="light")document.documentElement.classList.remove("dark")}catch(e){}`,
+          }}
+        />
+      </head>
+      <body className={`${geist.variable} font-sans antialiased bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-white`}>
         {children}
       </body>
     </html>

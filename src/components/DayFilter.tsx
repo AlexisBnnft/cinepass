@@ -19,7 +19,7 @@ export function DayFilter({ dates, activeDate, onChange }: DayFilterProps) {
             className={`flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 ${
               isActive
                 ? "bg-indigo-600 text-white"
-                : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                : "bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
             }`}
           >
             <span className="text-[10px] uppercase">{dayLabel}</span>

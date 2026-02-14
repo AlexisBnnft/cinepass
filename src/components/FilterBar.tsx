@@ -48,7 +48,7 @@ export function FilterBar({
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
               showFavoritesOnly
                 ? "bg-indigo-600 text-white"
-                : "bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+                : "bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
             }`}
           >
             <svg className="w-3.5 h-3.5" fill={showFavoritesOnly ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -62,7 +62,7 @@ export function FilterBar({
               placeholder="Rechercher un film..."
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-48"
+              className="bg-white dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-48"
             />
           </div>
         </div>
