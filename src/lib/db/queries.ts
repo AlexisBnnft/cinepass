@@ -37,6 +37,8 @@ export interface ShowtimeRow {
   cinema_id: number;
   cinema_name: string;
   arrondissement: number;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface CinemaRow {
@@ -118,7 +120,8 @@ export async function getShowtimesForMovie(movieId: number, date?: string): Prom
   const sql = `
     SELECT
       s.id, s.show_date, s.show_time, s.version, s.format,
-      c.id as cinema_id, c.name as cinema_name, c.arrondissement
+      c.id as cinema_id, c.name as cinema_name, c.arrondissement,
+      c.latitude, c.longitude
     FROM showtimes s
     JOIN cinemas c ON c.id = s.cinema_id
     WHERE ${conditions.join(" AND ")}

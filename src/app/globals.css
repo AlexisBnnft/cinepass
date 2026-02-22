@@ -14,3 +14,13 @@
 .dark * {
   scrollbar-color: #374151 transparent;
 }
+
+/* Leaflet popup dark mode */
+.dark .leaflet-popup-content-wrapper {
+  background-color: #1f2937;
+  color: #f3f4f6;
+}
+
+.dark .leaflet-popup-tip {
+  background-color: #1f2937;
+}

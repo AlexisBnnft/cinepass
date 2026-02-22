@@ -17,6 +17,8 @@ interface Showtime {
 interface Cinema {
   cinema_name: string;
   arrondissement: number;
+  latitude: number | null;
+  longitude: number | null;
   showtimes: Showtime[];
 }
 

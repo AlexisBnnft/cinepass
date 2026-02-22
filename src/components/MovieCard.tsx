@@ -5,6 +5,8 @@ import { formatDuration, formatArrondissement } from "@/lib/utils";
 interface Cinema {
   cinema_name: string;
   arrondissement: number;
+  latitude: number | null;
+  longitude: number | null;
   showtimes: {
     show_time: string;
     version: string;

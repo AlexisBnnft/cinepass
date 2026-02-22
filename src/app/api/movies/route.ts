@@ -23,12 +23,14 @@ export async function GET(request: NextRequest) {
     movies.map(async (movie) => {
       const showtimes = await getShowtimesForMovie(movie.id, date);
       // Group showtimes by cinema
-      const cinemaMap = new Map<number, { cinema_name: string; arrondissement: number; showtimes: typeof showtimes }>();
+      const cinemaMap = new Map<number, { cinema_name: string; arrondissement: number; latitude: number | null; longitude: number | null; showtimes: typeof showtimes }>();
       for (const st of showtimes) {
         if (!cinemaMap.has(st.cinema_id)) {
           cinemaMap.set(st.cinema_id, {
             cinema_name: st.cinema_name,
             arrondissement: st.arrondissement,
+            latitude: st.latitude,
+            longitude: st.longitude,
             showtimes: [],
           });
         }
