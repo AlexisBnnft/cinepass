@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeAll } from "@/lib/scraper/orchestrator";
-import { getActiveScrapeRun } from "@/lib/db/queries";
+import { getActiveScrapeRun, failScrapeRun } from "@/lib/db/queries";
 
 export const maxDuration = 300; // 5 minutes max
 
@@ -10,12 +10,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const force = request.nextUrl.searchParams.get("force") === "true";
+
   const active = await getActiveScrapeRun();
   if (active) {
-    return NextResponse.json(
-      { error: "Scrape already in progress", runId: active.id },
-      { status: 409 }
-    );
+    if (force) {
+      await failScrapeRun(Number(active.id), "Force-cancelled by new scrape request");
+    } else {
+      return NextResponse.json(
+        { error: "Scrape already in progress", runId: active.id },
+        { status: 409 }
+      );
+    }
   }
 
   try {
