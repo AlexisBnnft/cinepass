@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMoviesWithFilters, getShowtimesForMovie, getDistinctGenres } from "@/lib/db/queries";
+import {
+  getMoviesWithFilters,
+  getShowtimesForMovie,
+  getDistinctGenres,
+  getPatheSessionsForDate,
+} from "@/lib/db/queries";
+import { indexPatheSessions } from "@/lib/pathe-seats";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -18,10 +24,17 @@ export async function GET(request: NextRequest) {
     search,
   });
 
+  // Pathé seat availability, resolved per showtime below
+  const resolveSeats = indexPatheSessions(await getPatheSessionsForDate(date));
+
   // For each movie, also get its showtimes for this date
   const moviesWithShowtimes = await Promise.all(
     movies.map(async (movie) => {
-      const showtimes = await getShowtimesForMovie(movie.id, date);
+      const rawShowtimes = await getShowtimesForMovie(movie.id, date);
+      const showtimes = rawShowtimes.map((st) => ({
+        ...st,
+        seats: resolveSeats(st, movie.title),
+      }));
       // Group showtimes by cinema
       const cinemaMap = new Map<number, { cinema_name: string; arrondissement: number; latitude: number | null; longitude: number | null; showtimes: typeof showtimes }>();
       for (const st of showtimes) {

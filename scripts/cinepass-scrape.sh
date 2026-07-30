@@ -49,3 +49,19 @@ if [ "$http_code" = "200" ]; then
 else
   log "FAIL (HTTP $http_code): $body"
 fi
+
+# Refresh the Pathé booking session ids (used by the seat scraper, which runs
+# separately from a residential IP — see README-pathe-seats.md)
+log "Discovering Pathé sessions..."
+pathe_response=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:$PORT/api/pathe/discover?days=3" \
+  -H "Authorization: Bearer $SCRAPE_SECRET" \
+  --max-time 600)
+
+pathe_code=$(echo "$pathe_response" | tail -1)
+pathe_body=$(echo "$pathe_response" | sed '$d')
+
+if [ "$pathe_code" = "200" ]; then
+  log "Pathé OK: $(echo "$pathe_body" | head -c 300)"
+else
+  log "Pathé FAIL (HTTP $pathe_code): $(echo "$pathe_body" | head -c 300)"
+fi

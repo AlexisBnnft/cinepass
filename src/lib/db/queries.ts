@@ -32,6 +32,7 @@ export interface ShowtimeRow {
   id: number;
   show_date: string;
   show_time: string;
+  show_datetime: string;
   version: string;
   format: string;
   cinema_id: number;
@@ -119,7 +120,7 @@ export async function getShowtimesForMovie(movieId: number, date?: string): Prom
 
   const sql = `
     SELECT
-      s.id, s.show_date, s.show_time, s.version, s.format,
+      s.id, s.show_date, s.show_time, s.show_datetime, s.version, s.format,
       c.id as cinema_id, c.name as cinema_name, c.arrondissement,
       c.latitude, c.longitude
     FROM showtimes s
@@ -189,6 +190,116 @@ export async function deleteShowtimesForCinemaDate(cinemaId: number, date: strin
   await db.execute({
     sql: "DELETE FROM showtimes WHERE cinema_id = ? AND show_date = ?",
     args: [cinemaId, date],
+  });
+}
+
+export interface PatheSessionRow {
+  vista_ref: string;
+  session_id: number;
+  cinema_id: number;
+  show_datetime: string;
+  title_norm: string | null;
+  show_slug: string | null;
+  version: string | null;
+  auditorium: string | null;
+  capacity: number | null;
+  seats_total: number | null;
+  seats_free: number | null;
+  fetched_at: string | null;
+}
+
+export async function upsertPatheSessions(
+  sessions: {
+    vistaRef: string;
+    sessionId: number;
+    cinemaId: number;
+    cinemaSlug: string;
+    showSlug: string;
+    titleNorm: string;
+    showDatetime: string;
+    version: string | null;
+    auditorium: string | null;
+    capacity: number | null;
+  }[]
+): Promise<void> {
+  if (sessions.length === 0) return;
+  const db = await getDb();
+  const sql = `
+    INSERT INTO pathe_sessions
+      (vista_ref, session_id, cinema_id, cinema_slug, show_slug, title_norm,
+       show_datetime, version, auditorium, capacity, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(vista_ref, session_id) DO UPDATE SET
+      cinema_id = excluded.cinema_id,
+      cinema_slug = excluded.cinema_slug,
+      show_slug = excluded.show_slug,
+      title_norm = excluded.title_norm,
+      show_datetime = excluded.show_datetime,
+      version = excluded.version,
+      auditorium = excluded.auditorium,
+      capacity = excluded.capacity,
+      updated_at = datetime('now')
+  `;
+
+  // Turso caps statements per batch, so chunk the writes.
+  const chunkSize = 100;
+  for (let i = 0; i < sessions.length; i += chunkSize) {
+    await db.batch(
+      sessions.slice(i, i + chunkSize).map((s) => ({
+        sql,
+        args: [
+          s.vistaRef, s.sessionId, s.cinemaId, s.cinemaSlug, s.showSlug, s.titleNorm,
+          s.showDatetime, s.version, s.auditorium, s.capacity,
+        ],
+      })),
+      "write"
+    );
+  }
+}
+
+/** Sessions (with their latest seat snapshot, if any) playing on a given date. */
+export async function getPatheSessionsForDate(date: string): Promise<PatheSessionRow[]> {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: `
+      SELECT ps.vista_ref, ps.session_id, ps.cinema_id, ps.show_datetime, ps.title_norm,
+             ps.show_slug, ps.version, ps.auditorium, ps.capacity,
+             pt.seats_total, pt.seats_free, pt.fetched_at
+      FROM pathe_sessions ps
+      LEFT JOIN pathe_seats pt
+        ON pt.vista_ref = ps.vista_ref AND pt.session_id = ps.session_id
+      WHERE ps.show_datetime LIKE ?
+    `,
+    args: [`${date}T%`],
+  });
+  return result.rows as unknown as PatheSessionRow[];
+}
+
+export async function getSeatSnapshot(vistaRef: string, sessionId: number) {
+  const db = await getDb();
+  const result = await db.execute({
+    sql: `
+      SELECT pt.*, ps.auditorium, ps.show_datetime, ps.capacity
+      FROM pathe_seats pt
+      LEFT JOIN pathe_sessions ps
+        ON ps.vista_ref = pt.vista_ref AND ps.session_id = pt.session_id
+      WHERE pt.vista_ref = ? AND pt.session_id = ?
+    `,
+    args: [vistaRef, sessionId],
+  });
+  return result.rows[0] as Record<string, unknown> | undefined;
+}
+
+export async function deleteOldPatheData(beforeDate: string): Promise<void> {
+  const db = await getDb();
+  await db.execute({
+    sql: `DELETE FROM pathe_seats WHERE (vista_ref, session_id) IN (
+            SELECT vista_ref, session_id FROM pathe_sessions WHERE show_datetime < ?)`,
+    args: [beforeDate],
+  });
+  await db.execute({
+    sql: "DELETE FROM pathe_sessions WHERE show_datetime < ?",
+    args: [beforeDate],
   });
 }
 

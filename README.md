@@ -34,3 +34,9 @@ curl -X POST https://your-site.com/api/scrape -H "Authorization: Bearer YOUR_SEC
 ```
 
 A cron script is provided in `scripts/scrape-cron.sh`.
+
+## Pathé seat availability
+
+Showtimes at Pathé cinemas also show how many seats are left and where they are.
+Setup and constraints (the scraper has to run from a residential connection):
+see [README-pathe-seats.md](README-pathe-seats.md).

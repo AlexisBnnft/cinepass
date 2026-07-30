@@ -49,6 +49,38 @@ export const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_showtimes_datetime ON showtimes(show_datetime);
   CREATE INDEX IF NOT EXISTS idx_movies_allocine_id ON movies(allocine_id);
 
+  -- Pathé booking sessions (Vista session ids), discovered from pathe.fr
+  CREATE TABLE IF NOT EXISTS pathe_sessions (
+    vista_ref       TEXT NOT NULL,
+    session_id      INTEGER NOT NULL,
+    cinema_id       INTEGER NOT NULL REFERENCES cinemas(id) ON DELETE CASCADE,
+    cinema_slug     TEXT NOT NULL,
+    show_slug       TEXT,
+    title_norm      TEXT,
+    show_datetime   TEXT NOT NULL,
+    version         TEXT,
+    auditorium      TEXT,
+    capacity        INTEGER,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (vista_ref, session_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pathe_sessions_lookup ON pathe_sessions(cinema_id, show_datetime);
+  CREATE INDEX IF NOT EXISTS idx_pathe_sessions_datetime ON pathe_sessions(show_datetime);
+
+  -- Latest seat availability snapshot per session
+  CREATE TABLE IF NOT EXISTS pathe_seats (
+    vista_ref       TEXT NOT NULL,
+    session_id      INTEGER NOT NULL,
+    fetched_at      TEXT NOT NULL,
+    room_name       TEXT,
+    seats_total     INTEGER NOT NULL,
+    seats_free      INTEGER NOT NULL,
+    col_count       INTEGER,
+    layout          TEXT,
+    PRIMARY KEY (vista_ref, session_id)
+  );
+
   CREATE TABLE IF NOT EXISTS scrape_runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at      TEXT NOT NULL,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { formatDuration, formatArrondissement } from "@/lib/utils";
+import { SeatMapPanel } from "./SeatMapPanel";
 
 const CinemaMap = dynamic(() => import("./CinemaMap"), {
   ssr: false,
@@ -13,10 +14,20 @@ const CinemaMap = dynamic(() => import("./CinemaMap"), {
   ),
 });
 
+interface Seats {
+  vistaRef: string;
+  sessionId: number;
+  seatsFree: number | null;
+  seatsTotal: number | null;
+  fetchedAt: string | null;
+  auditorium: string | null;
+}
+
 interface Showtime {
   show_time: string;
   version: string;
   format: string;
+  seats?: Seats | null;
 }
 
 interface Cinema {
@@ -49,9 +60,23 @@ interface MovieDetailModalProps {
   onToggleFavorite: () => void;
 }
 
+/** Seat counts read at a glance: comfortable → filling up → nearly sold out. */
+function seatTone(free: number, total: number): string {
+  const ratio = total > 0 ? free / total : 1;
+  if (ratio <= 0.08) return "text-red-600 dark:text-red-400";
+  if (ratio <= 0.25) return "text-amber-600 dark:text-amber-400";
+  return "text-emerald-600 dark:text-emerald-400";
+}
+
 export function MovieDetailModal({ movie, onClose, isFavorite, onToggleFavorite }: MovieDetailModalProps) {
   const genres = movie.genres?.split(",") || [];
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  const [openSeats, setOpenSeats] = useState<{
+    key: string;
+    vistaRef: string;
+    sessionId: number;
+    label: string;
+  } | null>(null);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -170,21 +195,77 @@ export function MovieDetailModal({ movie, onClose, isFavorite, onToggleFavorite 
                       </span>
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
-                      {cinema.showtimes.map((st, i) => (
-                        <span
-                          key={i}
-                          className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700"
-                        >
-                          {st.show_time}
-                          {st.version !== "VF" && (
-                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 ml-1">{st.version}</span>
-                          )}
-                          {st.format !== "2D" && (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-1">{st.format}</span>
-                          )}
-                        </span>
-                      ))}
+                      {cinema.showtimes.map((st, i) => {
+                        const seats = st.seats;
+                        const hasSeats = !!seats && seats.seatsFree !== null && seats.seatsTotal !== null;
+                        const key = `${cinema.cinema_name}-${i}`;
+                        const isOpen = openSeats?.key === key;
+                        const badges = (
+                          <>
+                            {st.show_time}
+                            {st.version !== "VF" && (
+                              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 ml-1">{st.version}</span>
+                            )}
+                            {st.format !== "2D" && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-1">{st.format}</span>
+                            )}
+                          </>
+                        );
+
+                        if (!hasSeats) {
+                          return (
+                            <span
+                              key={i}
+                              className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700"
+                            >
+                              {badges}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={i}
+                            onClick={() =>
+                              setOpenSeats(
+                                isOpen
+                                  ? null
+                                  : {
+                                      key,
+                                      vistaRef: seats!.vistaRef,
+                                      sessionId: seats!.sessionId,
+                                      label: `${cinema.cinema_name} · ${st.show_time}`,
+                                    }
+                              )
+                            }
+                            title="Voir les places disponibles"
+                            className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                              isOpen
+                                ? "bg-indigo-600 border-indigo-600 text-white"
+                                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700 hover:border-indigo-400 dark:hover:border-indigo-500"
+                            }`}
+                          >
+                            {badges}
+                            <span
+                              className={`text-[10px] ml-1.5 font-medium ${
+                                isOpen ? "text-white/90" : seatTone(seats!.seatsFree!, seats!.seatsTotal!)
+                              }`}
+                            >
+                              {seats!.seatsFree} pl.
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                    {openSeats && cinema.showtimes.some((_, i) => openSeats.key === `${cinema.cinema_name}-${i}`) && (
+                      <SeatMapPanel
+                        key={`${openSeats.vistaRef}-${openSeats.sessionId}`}
+                        vistaRef={openSeats.vistaRef}
+                        sessionId={openSeats.sessionId}
+                        label={openSeats.label}
+                        onClose={() => setOpenSeats(null)}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
