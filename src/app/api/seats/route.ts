@@ -18,13 +18,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ available: false }, { status: 404 });
   }
 
-  let layout: unknown = null;
-  if (typeof snapshot.layout === "string" && snapshot.layout.length > 0) {
-    try {
-      layout = JSON.parse(snapshot.layout);
-    } catch {
-      layout = null;
-    }
+  // A row with no layout means the scraper tried and Pathé had no seat map for it.
+  if (typeof snapshot.layout !== "string" || snapshot.layout.length === 0) {
+    return NextResponse.json({ available: false }, { status: 404 });
+  }
+
+  let layout: unknown;
+  try {
+    layout = JSON.parse(snapshot.layout);
+  } catch {
+    return NextResponse.json({ available: false }, { status: 404 });
   }
 
   return NextResponse.json({

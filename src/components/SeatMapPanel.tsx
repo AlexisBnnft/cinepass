@@ -134,7 +134,11 @@ export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPan
       {state === "ready" && data?.layout && (
         <>
           <div className="mt-3 overflow-x-auto">
-            <div className="min-w-[240px] space-y-[3px]">
+            {/* Cap the seat size so a 30-seat room doesn't render giant blocks. */}
+            <div
+              className="min-w-[240px] mx-auto space-y-[3px]"
+              style={{ maxWidth: `${data.layout.cols * 22 + 24}px` }}
+            >
               {data.layout.rows.map((row, rowIndex) => (
                 <div key={rowIndex} className="flex items-center gap-1.5">
                   <span className="w-3 shrink-0 text-[8px] text-gray-400 dark:text-gray-500 text-right leading-none">
@@ -154,8 +158,13 @@ export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPan
                 </div>
               ))}
             </div>
-            <div className="mt-2 ml-[18px] h-[2px] rounded-full bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
-            <div className="text-center text-[8px] text-gray-400 dark:text-gray-500 mt-0.5">ÉCRAN</div>
+            <div
+              className="mx-auto min-w-[240px]"
+              style={{ maxWidth: `${data.layout.cols * 22 + 24}px` }}
+            >
+              <div className="mt-2 ml-[18px] h-[2px] rounded-full bg-gradient-to-r from-transparent via-amber-400 to-transparent" />
+              <div className="text-center text-[8px] text-gray-400 dark:text-gray-500 mt-0.5">ÉCRAN</div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">

@@ -65,14 +65,20 @@ python3 scripts/pathe-seats.py --dry-run --limit 5   # sans écrire en base
 PATHE_HEADLESS=0 python3 scripts/pathe-seats.py     # Chrome visible (debug)
 ```
 
-Politique de rafraîchissement (par défaut, ~120 séances par run) :
+Politique de rafraîchissement (par défaut, 70 séances par run) :
 
 | Séance dans | Rafraîchie si le relevé a plus de |
 |---|---|
 | moins de 4 h | 25 min |
 | moins de 48 h | 8 h |
 
-Soit environ 240 requêtes/heure vers Pathé, une par une avec ~1,2 s d'écart.
+Soit environ 140 requêtes/heure vers Pathé, une par une avec ~1,2 s d'écart.
+La limite de 70 reste sous le budget d'une session Akamai (~100 appels) : le script
+compte les appels déjà consommés par la session mise en cache et en redemande une
+avant de se faire couper.
+
+Quelques séances (spectacles sans placement numéroté) renvoient un 500 côté Pathé :
+elles sont marquées en base (`layout` NULL) et ignorées à l'affichage.
 
 ## Appariement AlloCiné ↔ Pathé
 

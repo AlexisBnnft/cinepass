@@ -13,8 +13,8 @@ reads the session ids discovered by /api/pathe/discover, and writes one snapshot
 per session. Everything the website needs is then plain DB reads.
 
 Usage:
-    python3 scripts/pathe-seats.py [--horizon-hours 8] [--max-age-min 25]
-                                   [--limit 200] [--dry-run] [--session 3166/148694]
+    python3 scripts/pathe-seats.py [--soon-hours 4] [--soon-age-min 25]
+                                   [--limit 70] [--dry-run] [--session 3166/148694]
 """
 
 from __future__ import annotations
@@ -159,6 +159,14 @@ CREATE TABLE IF NOT EXISTS pathe_seats (
 )
 """
 
+# A layout of NULL means "tried, no seat map available" — readers must skip these.
+MARK_UNAVAILABLE = """
+INSERT INTO pathe_seats (vista_ref, session_id, fetched_at, room_name, seats_total,
+                         seats_free, col_count, layout)
+VALUES (?, ?, ?, NULL, 0, 0, 0, NULL)
+ON CONFLICT(vista_ref, session_id) DO UPDATE SET fetched_at = excluded.fetched_at
+"""
+
 UPSERT_SEATS = """
 INSERT INTO pathe_seats (vista_ref, session_id, fetched_at, room_name, seats_total,
                          seats_free, col_count, layout)
@@ -266,7 +274,7 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
             jwt, cookies = None, {}
-            for _ in range(20):
+            for attempt in range(24):
                 page.wait_for_timeout(1500)
                 cookies = {c["name"]: c["value"] for c in ctx.cookies("https://s.pathe.fr")}
                 raw = cookies.get("cmd-cgp-authtoken")
@@ -277,6 +285,9 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
                         jwt = None
                 if jwt and "bm_sv" in cookies:
                     break
+                # The challenge sometimes needs a second look at the page.
+                if attempt in (11, 17):
+                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
             user_agent = page.evaluate("navigator.userAgent")
             page.close()
 
@@ -295,6 +306,7 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
         "user_agent": user_agent,
         # The JWT lasts 2h; refresh well before that.
         "expires_at": (datetime.now(PARIS) + timedelta(minutes=75)).isoformat(),
+        "requests": 0,
     }
     CREDS_PATH.parent.mkdir(parents=True, exist_ok=True)
     CREDS_PATH.write_text(json.dumps(creds))
@@ -302,15 +314,26 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
     return creds
 
 
-def load_credentials(vista_ref: str, session_id: int, force: bool = False) -> dict:
+def load_credentials(vista_ref: str, session_id: int, force: bool = False,
+                     max_requests: int = 80) -> dict:
     if not force and CREDS_PATH.exists():
         try:
             creds = json.loads(CREDS_PATH.read_text())
-            if datetime.fromisoformat(creds["expires_at"]) > datetime.now(PARIS):
+            fresh = datetime.fromisoformat(creds["expires_at"]) > datetime.now(PARIS)
+            if fresh and creds.get("requests", 0) < max_requests:
                 return creds
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
     return bootstrap_credentials(vista_ref, session_id)
+
+
+def remember_usage(creds: dict, calls: int) -> None:
+    """Persist how much of this Akamai session's budget is spent."""
+    creds["requests"] = creds.get("requests", 0) + calls
+    try:
+        CREDS_PATH.write_text(json.dumps(creds))
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------- seat maps
@@ -442,9 +465,12 @@ def main() -> int:
                         help="how far ahead to keep a rough snapshot")
     parser.add_argument("--later-age-min", type=int, default=480,
                         help="max snapshot age for the 'later' tier")
-    parser.add_argument("--limit", type=int, default=120, help="max sessions per run")
+    parser.add_argument("--limit", type=int, default=70,
+                        help="max sessions per run (Akamai drops a session after ~100 calls)")
     parser.add_argument("--min-delay", type=float, default=1.2, help="seconds between requests")
     parser.add_argument("--session", help="refresh a single session, e.g. 3166/148694")
+    parser.add_argument("--max-session-calls", type=int, default=80,
+                        help="retire the Akamai session after this many calls")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -464,13 +490,16 @@ def main() -> int:
         return 0
     log(f"{len(targets)} session(s) to refresh")
 
-    creds = load_credentials(targets[0]["vista_ref"], targets[0]["session_id"])
+    creds = load_credentials(targets[0]["vista_ref"], targets[0]["session_id"],
+                             max_requests=args.max_session_calls)
     http = make_http_session(creds)
 
     ok, failed, refreshes, consecutive_failures, pending = 0, 0, 0, 0, []
+    calls = 0
     for index, target in enumerate(targets):
         vista_ref, session_id = target["vista_ref"], int(target["session_id"])
         try:
+            calls += 1
             response = fetch_seat_map(http, creds, vista_ref, session_id)
         except Exception as error:  # network hiccup, keep going
             log(f"  {vista_ref}/{session_id}: {type(error).__name__} {error}")
@@ -489,6 +518,8 @@ def main() -> int:
                 break
             refreshes += 1
             log(f"  {vista_ref}/{session_id}: HTTP {response.status_code}, refreshing credentials")
+            remember_usage(creds, calls)
+            calls = 0
             time.sleep(5 + random.random() * 5)
             try:
                 creds = load_credentials(vista_ref, session_id, force=True)
@@ -496,15 +527,23 @@ def main() -> int:
                 log(f"bootstrap failed: {error}")
                 break
             http = make_http_session(creds)
+            calls += 1
             response = fetch_seat_map(http, creds, vista_ref, session_id)
-            if response.status_code != 200:
+            if response.status_code in (401, 403, 429):
                 log(f"  still HTTP {response.status_code} after refresh, stopping")
                 break
+            # Anything else (Pathé answers 500 on a few sessions) is just this
+            # session's problem — fall through and keep going.
 
         if response.status_code != 200:
             log(f"  {vista_ref}/{session_id}: HTTP {response.status_code}")
             failed += 1
             consecutive_failures += 1
+            # Pathé answers 500 on a few sessions (no numbered seating). Leave a
+            # marker row so they don't hog the "never fetched" slot every run.
+            pending.append((MARK_UNAVAILABLE, [
+                vista_ref, session_id, datetime.now(PARIS).strftime("%Y-%m-%dT%H:%M:%S"),
+            ]))
             if consecutive_failures >= 5:
                 log("5 failures in a row, stopping")
                 break
@@ -535,6 +574,7 @@ def main() -> int:
 
     if pending and not args.dry_run:
         db.execute(pending)
+    remember_usage(creds, calls)
 
     log(f"done: {ok} snapshot(s), {failed} failure(s)" + (" [dry-run]" if args.dry_run else ""))
     return 0 if ok or not targets else 1

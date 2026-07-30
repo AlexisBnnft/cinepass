@@ -268,6 +268,7 @@ export async function getPatheSessionsForDate(date: string): Promise<PatheSessio
       FROM pathe_sessions ps
       LEFT JOIN pathe_seats pt
         ON pt.vista_ref = ps.vista_ref AND pt.session_id = ps.session_id
+           AND pt.layout IS NOT NULL
       WHERE ps.show_datetime LIKE ?
     `,
     args: [`${date}T%`],
