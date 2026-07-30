@@ -19,17 +19,12 @@ VM_HOST="vm"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "==> Syncing repo to VM..."
-ssh "$VM_HOST" bash -c "'
-if [ -d ~/cinepass/.git ]; then
-  cd ~/cinepass && git pull
-else
-  git clone git@github.com:AlexisBnnft/cinepass.git ~/cinepass
-fi
-'"
-
-echo "==> Copying .env.local to VM..."
-scp "$PROJECT_DIR/.env.local" "$VM_HOST:~/cinepass/.env.local"
+echo "==> Syncing project to VM via rsync..."
+rsync -az --delete \
+  --exclude node_modules \
+  --exclude .next \
+  --exclude .git \
+  "$PROJECT_DIR/" "$VM_HOST:~/cinepass/"
 
 echo "==> Installing deps and building on VM..."
 ssh "$VM_HOST" bash -c "'
