@@ -291,6 +291,52 @@ export async function getSeatSnapshot(vistaRef: string, sessionId: number) {
   return result.rows[0] as Record<string, unknown> | undefined;
 }
 
+export type RefreshOutcome = "queued" | "already-queued" | "too-soon" | "unknown-session" | "queue-full";
+
+/**
+ * Ask the residential worker to re-read one session's seat map.
+ * Guarded so a click-happy visitor can't turn the site into a load generator.
+ */
+export async function requestSeatRefresh(
+  vistaRef: string,
+  sessionId: number,
+  options: { minAgeSeconds?: number; maxQueue?: number } = {}
+): Promise<RefreshOutcome> {
+  const db = await getDb();
+  const minAge = options.minAgeSeconds ?? 45;
+  const maxQueue = options.maxQueue ?? 40;
+
+  const session = await db.execute({
+    sql: "SELECT 1 FROM pathe_sessions WHERE vista_ref = ? AND session_id = ?",
+    args: [vistaRef, sessionId],
+  });
+  if (!session.rows[0]) return "unknown-session";
+
+  const snapshot = await db.execute({
+    sql: `SELECT (julianday('now') - julianday(fetched_at)) * 86400 AS age
+          FROM pathe_seats WHERE vista_ref = ? AND session_id = ?`,
+    args: [vistaRef, sessionId],
+  });
+  const age = snapshot.rows[0]?.age as number | undefined;
+  if (age !== undefined && age !== null && age < minAge) return "too-soon";
+
+  const queued = await db.execute({
+    sql: "SELECT COUNT(*) AS n FROM pathe_refresh_queue WHERE vista_ref = ? AND session_id = ?",
+    args: [vistaRef, sessionId],
+  });
+  if ((queued.rows[0].n as number) > 0) return "already-queued";
+
+  const pending = await db.execute("SELECT COUNT(*) AS n FROM pathe_refresh_queue");
+  if ((pending.rows[0].n as number) >= maxQueue) return "queue-full";
+
+  await db.execute({
+    sql: `INSERT INTO pathe_refresh_queue (vista_ref, session_id, requested_at)
+          VALUES (?, ?, datetime('now'))`,
+    args: [vistaRef, sessionId],
+  });
+  return "queued";
+}
+
 export async function deleteOldPatheData(beforeDate: string): Promise<void> {
   const db = await getDb();
   await db.execute({
@@ -301,6 +347,9 @@ export async function deleteOldPatheData(beforeDate: string): Promise<void> {
   await db.execute({
     sql: "DELETE FROM pathe_sessions WHERE show_datetime < ?",
     args: [beforeDate],
+  });
+  await db.execute({
+    sql: `DELETE FROM pathe_refresh_queue WHERE requested_at < datetime('now', '-1 day')`,
   });
 }
 

@@ -55,6 +55,7 @@ function seatClass(char: string): string {
 export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPanelProps) {
   const [data, setData] = useState<SeatsResponse | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "empty" | "error">("loading");
+  const [refresh, setRefresh] = useState<"idle" | "waiting" | "done" | "unavailable">("idle");
 
   // Remounted per session (keyed by the caller), so "loading" is the initial state.
   useEffect(() => {
@@ -79,6 +80,48 @@ export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPan
     };
   }, [vistaRef, sessionId]);
 
+  /**
+   * The site can't call Pathé itself, so this queues the request and waits for the
+   * scraper (which polls every minute) to write a newer snapshot.
+   */
+  async function askRefresh() {
+    if (refresh === "waiting") return;
+    const before = data?.fetchedAt ?? null;
+    setRefresh("waiting");
+
+    try {
+      const res = await fetch(`/api/seats/refresh?vista=${vistaRef}&session=${sessionId}`, {
+        method: "POST",
+      });
+      const { outcome } = (await res.json()) as { outcome?: string };
+      if (outcome === "unknown-session" || outcome === "queue-full") {
+        setRefresh("unavailable");
+        return;
+      }
+    } catch {
+      setRefresh("unavailable");
+      return;
+    }
+
+    for (let attempt = 0; attempt < 40; attempt++) {
+      await new Promise((r) => setTimeout(r, 4000));
+      try {
+        const res = await fetch(`/api/seats?vista=${vistaRef}&session=${sessionId}`);
+        if (!res.ok) continue;
+        const json: SeatsResponse = await res.json();
+        if (json.fetchedAt && json.fetchedAt !== before) {
+          setData(json);
+          setState("ready");
+          setRefresh("done");
+          return;
+        }
+      } catch {
+        // keep polling
+      }
+    }
+    setRefresh("unavailable");
+  }
+
   const fill =
     data?.seatsTotal && data.seatsFree !== null
       ? Math.round(((data.seatsTotal - data.seatsFree) / data.seatsTotal) * 100)
@@ -99,18 +142,46 @@ export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPan
               {data.seatsFree} places libres sur {data.seatsTotal}
               {fill !== null && ` · ${fill}% rempli`}
               {data.fetchedAt && ` · ${formatFreshness(data.fetchedAt)}`}
+              {refresh === "waiting" && (
+                <span className="text-indigo-600 dark:text-indigo-400"> · mise à jour en cours…</span>
+              )}
+              {refresh === "unavailable" && (
+                <span className="text-amber-600 dark:text-amber-400"> · mise à jour indisponible</span>
+              )}
             </div>
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="shrink-0 p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          aria-label="Fermer le plan de salle"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {state === "ready" && (
+            <button
+              onClick={askRefresh}
+              disabled={refresh === "waiting"}
+              title="Relever les places maintenant (~1 min)"
+              className="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:hover:bg-transparent"
+              aria-label="Rafraîchir les places"
+            >
+              <svg
+                className={`w-3.5 h-3.5 ${refresh === "waiting" ? "animate-spin" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 9A8 8 0 006.3 5.7L4 8m0 7a8 8 0 0013.7 3.3L20 16" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            aria-label="Fermer le plan de salle"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {state === "loading" && (

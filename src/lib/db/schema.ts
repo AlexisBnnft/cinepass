@@ -81,6 +81,16 @@ export const SCHEMA = `
     PRIMARY KEY (vista_ref, session_id)
   );
 
+  -- "Refresh now" requests from the site. The seat scraper can't run on the VM
+  -- (Pathé refuses datacenter IPs), so the site queues here and the residential
+  -- worker picks it up within a minute.
+  CREATE TABLE IF NOT EXISTS pathe_refresh_queue (
+    vista_ref       TEXT NOT NULL,
+    session_id      INTEGER NOT NULL,
+    requested_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (vista_ref, session_id)
+  );
+
   CREATE TABLE IF NOT EXISTS scrape_runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at      TEXT NOT NULL,

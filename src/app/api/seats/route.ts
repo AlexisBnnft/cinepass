@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSeatSnapshot } from "@/lib/db/queries";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Latest seat availability for a Pathé session.
  * Snapshots are collected out-of-band (scripts/pathe-seats.py); this only reads them.
@@ -41,5 +43,5 @@ export async function GET(request: NextRequest) {
     colCount: snapshot.col_count,
     layout,
     bookingUrl: `https://s.pathe.fr/fr/V${vistaRef}S${sessionId}/booking`,
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }

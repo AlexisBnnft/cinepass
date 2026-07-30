@@ -39,6 +39,10 @@ REPO = Path(__file__).resolve().parent.parent
 CREDS_PATH = Path(os.path.expanduser("~/.cache/cinepass/pathe-creds.json"))
 CHROME_PROFILE = Path(os.path.expanduser("~/.cache/cinepass/pathe-chrome-profile"))
 CDP_PORT = int(os.environ.get("PATHE_CDP_PORT", "9422"))
+# Pathé refuses datacenter IPs on /api/*. On a server, route both Chrome and the
+# HTTP calls through a proxy whose egress isn't flagged (Cloudflare WARP in proxy
+# mode works: `warp-cli mode proxy`), e.g. PATHE_PROXY=socks5://127.0.0.1:40000
+PROXY = os.environ.get("PATHE_PROXY", "").strip()
 CHROME_UA_FALLBACK = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
@@ -170,6 +174,15 @@ CREATE TABLE IF NOT EXISTS pathe_seats (
 )
 """
 
+QUEUE_TABLE_DDL = """
+CREATE TABLE IF NOT EXISTS pathe_refresh_queue (
+  vista_ref    TEXT NOT NULL,
+  session_id   INTEGER NOT NULL,
+  requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (vista_ref, session_id)
+)
+"""
+
 # A layout of NULL means "tried, no seat map available" — readers must skip these.
 MARK_UNAVAILABLE = """
 INSERT INTO pathe_seats (vista_ref, session_id, fetched_at, room_name, seats_total,
@@ -238,6 +251,8 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
         "--disable-blink-features=AutomationControlled",
         "about:blank",
     ]
+    if PROXY:
+        args.insert(1, f"--proxy-server={PROXY}")
     if headless:
         # Chrome advertises "HeadlessChrome" in headless mode, which Akamai blocks
         # outright, so the UA (and its client hints, below) are overridden.
@@ -246,7 +261,8 @@ def bootstrap_credentials(vista_ref: str, session_id: int) -> dict:
     if sys.platform.startswith("linux"):
         args.insert(1, "--no-sandbox")
 
-    log(f"bootstrap: launching {os.path.basename(chrome)} ({'headless' if headless else 'headed'})")
+    log(f"bootstrap: launching {os.path.basename(chrome)} "
+        f"({'headless' if headless else 'headed'}{', via ' + PROXY if PROXY else ''})")
     proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         for _ in range(60):
@@ -354,6 +370,9 @@ def make_http_session(creds: dict):
     from curl_cffi import requests
 
     session = requests.Session(impersonate="chrome")
+    if PROXY:
+        # Must be the same egress as the bootstrap: Akamai ties its cookies to the IP.
+        session.proxies = {"http": PROXY, "https": PROXY}
     for name, value in creds["cookies"].items():
         session.cookies.set(name, value, domain=".pathe.fr")
     return session
@@ -416,6 +435,34 @@ def parse_seat_map(payload: dict) -> dict | None:
 
 
 # ------------------------------------------------------------------------- main
+
+
+def take_queue(db: Turso, limit: int = 20) -> list[dict]:
+    """
+    Manual "refresh now" requests from the site. They jump the queue: the visitor
+    is watching the panel, and the rows are removed once handled either way.
+    """
+    return db.query(
+        """
+        SELECT q.vista_ref, q.session_id, ps.show_datetime, ps.auditorium
+        FROM pathe_refresh_queue q
+        LEFT JOIN pathe_sessions ps
+          ON ps.vista_ref = q.vista_ref AND ps.session_id = q.session_id
+        ORDER BY q.requested_at ASC
+        LIMIT ?
+        """,
+        [limit],
+    )
+
+
+def clear_queue(db: Turso, targets: list[dict]) -> None:
+    if not targets:
+        return
+    db.execute([
+        ("DELETE FROM pathe_refresh_queue WHERE vista_ref = ? AND session_id = ?",
+         [t["vista_ref"], int(t["session_id"])])
+        for t in targets
+    ])
 
 
 def select_sessions(db: Turso, args) -> list[dict]:
@@ -481,19 +528,31 @@ def main() -> int:
     parser.add_argument("--session", help="refresh a single session, e.g. 3166/148694")
     parser.add_argument("--max-session-calls", type=int, default=80,
                         help="retire the Akamai session after this many calls")
+    parser.add_argument("--queue", action="store_true",
+                        help="only handle the site's refresh requests, then exit")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     env = load_env()
     db = Turso(env["TURSO_DATABASE_URL"], env["TURSO_AUTH_TOKEN"])
-    db.execute([(SEATS_TABLE_DDL.strip(), [])])
+    db.execute([(SEATS_TABLE_DDL.strip(), []), (QUEUE_TABLE_DDL.strip(), [])])
 
+    queued: list[dict] = []
     if args.session:
         vista_ref, session_id = args.session.split("/")
         targets = [{"vista_ref": vista_ref, "session_id": int(session_id),
                     "show_datetime": "manual", "auditorium": None}]
     else:
-        targets = select_sessions(db, args)
+        queued = take_queue(db)
+        if args.queue:
+            targets = queued
+        else:
+            scheduled = select_sessions(db, args)
+            asked = {(t["vista_ref"], int(t["session_id"])) for t in queued}
+            targets = queued + [t for t in scheduled
+                                if (t["vista_ref"], int(t["session_id"])) not in asked]
+    if queued:
+        log(f"{len(queued)} demande(s) manuelle(s) en tête de file")
 
     if not targets:
         log("nothing to refresh")
@@ -582,6 +641,8 @@ def main() -> int:
 
     if pending and not args.dry_run:
         db.execute(pending)
+    if queued and not args.dry_run:
+        clear_queue(db, queued)
     remember_usage(creds, calls)
 
     log(f"done: {ok} snapshot(s), {failed} failure(s)" + (" [dry-run]" if args.dry_run else ""))
