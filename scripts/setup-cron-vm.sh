@@ -24,6 +24,7 @@ rsync -az --delete \
   --exclude node_modules \
   --exclude .next \
   --exclude .git \
+  --exclude .env.local \
   "$PROJECT_DIR/" "$VM_HOST:~/cinepass/"
 
 echo "==> Installing deps and building on VM..."

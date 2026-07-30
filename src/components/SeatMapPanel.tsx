@@ -98,6 +98,16 @@ export function SeatMapPanel({ vistaRef, sessionId, label, onClose }: SeatMapPan
         setRefresh("unavailable");
         return;
       }
+      if (outcome === "refreshed" || outcome === "too-soon") {
+        // Already read, either just now or moments ago: pick it up directly.
+        const fresh = await fetch(`/api/seats?vista=${vistaRef}&session=${sessionId}`);
+        if (fresh.ok) {
+          setData((await fresh.json()) as SeatsResponse);
+          setState("ready");
+        }
+        setRefresh("done");
+        return;
+      }
     } catch {
       setRefresh("unavailable");
       return;

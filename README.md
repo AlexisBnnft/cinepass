@@ -25,6 +25,21 @@ npm run dev
 | `TURSO_AUTH_TOKEN` | Turso auth token |
 | `SCRAPE_SECRET` | Secret for the `/api/scrape` endpoint |
 
+## Hosting
+
+The site runs on the VM (`cinepass.service` on port 3210, behind nginx at
+`cinepass.bonnaf.com`), next to the Pathé scraper — that adjacency is what lets the
+"refresh now" button read seats live.
+
+```bash
+./scripts/deploy-vm.sh            # sync + build + restart
+./scripts/deploy-vm.sh --setup    # also install the systemd unit + nginx site
+ssh vm 'journalctl -u cinepass -f'
+```
+
+`.env.local` is not synced: the VM's copy holds server-only settings
+(`PATHE_LOCAL_SCRAPER`, `PATHE_PYTHON`, `PATHE_PROXY`).
+
 ## Scraping
 
 Trigger a scrape (protected by `SCRAPE_SECRET`):

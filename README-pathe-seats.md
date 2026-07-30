@@ -39,15 +39,22 @@ Chrome et reprend.
 ## Architecture
 
 ```
-VM (cron 8h)      → /api/pathe/discover           → pathe_sessions      (ids de séances)
-VM (cron 15 min)  → pathe-seats-vm.sh             → pathe_seats         (places + plan)
-VM (cron 1 min)   → pathe-seats-vm.sh --queue     → traite pathe_refresh_queue
-Netlify           → /api/movies, /api/seats       → lecture DB seulement
-                  → /api/seats/refresh            → écrit dans la file
+VM (cron 8h)      → /api/pathe/discover        → pathe_sessions   (ids de séances)
+VM (cron 15 min)  → pathe-seats-vm.sh          → pathe_seats      (places + plan)
+VM (cron 1 min)   → pathe-seats-vm.sh --queue  → file d'attente (repli)
+VM (site)         → /api/movies, /api/seats    → lecture DB
+                  → /api/seats/refresh         → lance le scraper en direct (~1,5 s)
 ```
 
-Le site ne fait jamais d'appel à Pathé : il lit les relevés, affiche toujours leur âge
-(« il y a 12 min »), et le bouton ↻ du plan de salle passe par la file d'attente.
+Le site tourne sur la même machine que le scraper : le bouton ↻ du plan de salle
+appelle `/api/seats/refresh`, qui exécute `pathe-seats.py --session …` et renvoie le
+relevé frais en ~1,5 s (`PATHE_LOCAL_SCRAPER=1` dans le `.env.local` de la VM).
+Node ne peut pas appeler Pathé lui-même — son empreinte TLS est refusée — d'où le
+passage par le script Python.
+
+Si le site est hébergé ailleurs (Netlify), la route se contente d'écrire dans
+`pathe_refresh_queue` et le cron d'une minute traite la demande (~60 s), le panneau
+attendant le nouveau relevé.
 
 ## Installation sur la VM
 

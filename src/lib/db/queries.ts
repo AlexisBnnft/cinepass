@@ -337,6 +337,14 @@ export async function requestSeatRefresh(
   return "queued";
 }
 
+export async function clearSeatRefreshRequest(vistaRef: string, sessionId: number): Promise<void> {
+  const db = await getDb();
+  await db.execute({
+    sql: "DELETE FROM pathe_refresh_queue WHERE vista_ref = ? AND session_id = ?",
+    args: [vistaRef, sessionId],
+  });
+}
+
 export async function deleteOldPatheData(beforeDate: string): Promise<void> {
   const db = await getDb();
   await db.execute({

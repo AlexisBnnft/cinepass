@@ -6,7 +6,8 @@ set -euo pipefail
 CINEPASS_DIR="$HOME/cinepass"
 LOG_FILE="$HOME/logs/cinepass-scrape.log"
 SCRAPE_SECRET="${SCRAPE_SECRET:-cinepass-scrape-2024}"
-PORT=3000
+PORT=3000            # fallback: temporary server
+SITE_PORT=3210       # cinepass.service
 
 mkdir -p "$HOME/logs"
 
@@ -26,27 +27,33 @@ free_port() {
   fi
 }
 
-free_port
+# The site normally runs as a systemd service (cinepass.service). Use it if it's up,
+# and only spin up a throwaway server when it isn't.
+if curl -sf "http://localhost:$SITE_PORT" >/dev/null 2>&1; then
+  PORT=$SITE_PORT
+  log "Using the running site on port $PORT"
+else
+  free_port
 
-log "Starting Next.js server..."
-cd "$CINEPASS_DIR"
-npm start -- -p $PORT &>/dev/null &
-SERVER_PID=$!
+  log "Starting a temporary Next.js server on port $PORT..."
+  cd "$CINEPASS_DIR"
+  npm start -- -p $PORT &>/dev/null &
+  SERVER_PID=$!
 
-# Cleanup: always kill the server on exit
-trap 'kill $SERVER_PID 2>/dev/null || true; free_port' EXIT
+  # Cleanup: always kill the server on exit
+  trap 'kill $SERVER_PID 2>/dev/null || true; free_port' EXIT
 
-# Wait for server to be ready
-for i in $(seq 1 30); do
-  if curl -sf http://localhost:$PORT >/dev/null 2>&1; then
-    break
-  fi
-  if [ "$i" = "30" ]; then
-    log "FAIL: Server did not start in 30s"
-    exit 1
-  fi
-  sleep 1
-done
+  for i in $(seq 1 30); do
+    if curl -sf http://localhost:$PORT >/dev/null 2>&1; then
+      break
+    fi
+    if [ "$i" = "30" ]; then
+      log "FAIL: Server did not start in 30s"
+      exit 1
+    fi
+    sleep 1
+  done
+fi
 
 # Make sure it's *our* build answering (an unauthenticated call returns 401 if the
 # route exists, 404 if we're talking to a stale server).
