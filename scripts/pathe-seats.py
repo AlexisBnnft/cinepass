@@ -49,6 +49,17 @@ SEAT_LETTERS = {"STD": "s", "DUO": "u", "DIS": "p", "TRIO": "t", "LOGE": "l",
                 "DBX": "b", "COCOON": "c", "LOUNGE": "g", "HOU": "h"}
 
 
+def now_stamp() -> str:
+    """Timestamps carry the Paris offset so the site can age them from any timezone."""
+    return datetime.now(PARIS).isoformat(timespec="seconds")
+
+
+def as_paris(value: str) -> datetime:
+    """Parse a stored timestamp, assuming Paris for the older offset-less rows."""
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=PARIS)
+
+
 def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
@@ -429,18 +440,17 @@ def select_sessions(db: Turso, args) -> list[dict]:
          (now + timedelta(hours=args.later_hours)).strftime("%Y-%m-%dT%H:%M")],
     )
 
-    naive_now = now.replace(tzinfo=None)
-    soon_limit = naive_now + timedelta(hours=args.soon_hours)
+    soon_limit = now + timedelta(hours=args.soon_hours)
     soon, later = [], []
     for row in rows:
         try:
-            starts_at = datetime.fromisoformat(row["show_datetime"])
+            starts_at = as_paris(row["show_datetime"])
         except ValueError:
             continue
         age_min = None
         if row.get("fetched_at"):
             try:
-                age_min = (naive_now - datetime.fromisoformat(row["fetched_at"])).total_seconds() / 60
+                age_min = (now - as_paris(row["fetched_at"])).total_seconds() / 60
             except ValueError:
                 age_min = None
         row["_age"] = age_min
@@ -541,9 +551,7 @@ def main() -> int:
             consecutive_failures += 1
             # Pathé answers 500 on a few sessions (no numbered seating). Leave a
             # marker row so they don't hog the "never fetched" slot every run.
-            pending.append((MARK_UNAVAILABLE, [
-                vista_ref, session_id, datetime.now(PARIS).strftime("%Y-%m-%dT%H:%M:%S"),
-            ]))
+            pending.append((MARK_UNAVAILABLE, [vista_ref, session_id, now_stamp()]))
             if consecutive_failures >= 5:
                 log("5 failures in a row, stopping")
                 break
@@ -557,7 +565,7 @@ def main() -> int:
             continue
 
         pending.append((UPSERT_SEATS, [
-            vista_ref, session_id, datetime.now(PARIS).strftime("%Y-%m-%dT%H:%M:%S"),
+            vista_ref, session_id, now_stamp(),
             parsed["room_name"], parsed["seats_total"], parsed["seats_free"],
             parsed["col_count"], json.dumps(parsed["layout"], separators=(",", ":")),
         ]))
