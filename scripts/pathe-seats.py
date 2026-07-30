@@ -56,10 +56,17 @@ def log(msg: str) -> None:
 # --------------------------------------------------------------------------- env
 
 
+def env_candidates() -> list[Path]:
+    # Also runs from a copy outside the repo (launchd can't read ~/Documents), so
+    # an .env sitting next to the script wins over the repo's .env.local.
+    here = Path(__file__).resolve().parent
+    paths = [Path(os.environ["CINEPASS_ENV"])] if os.environ.get("CINEPASS_ENV") else []
+    return paths + [here / ".env", REPO / ".env.local", REPO / ".env"]
+
+
 def load_env() -> dict[str, str]:
     env = dict(os.environ)
-    for name in (".env.local", ".env"):
-        path = REPO / name
+    for path in env_candidates():
         if not path.exists():
             continue
         for line in path.read_text().splitlines():

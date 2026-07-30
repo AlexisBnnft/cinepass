@@ -8,6 +8,10 @@
 # Why the Mac and not the VM: Pathé's seat API (s.pathe.fr/api/*) answers 403 to
 # datacenter IPs, so the scraper needs a residential connection. It runs every
 # 30 minutes while the Mac is awake; the site always shows the snapshot age.
+#
+# The scraper + a copy of the DB credentials are installed under
+# ~/Library/Application Support/cinepass because macOS forbids launchd agents
+# from reading ~/Documents. Re-run this script after editing pathe-seats.py.
 # =============================================================================
 
 set -euo pipefail
@@ -15,12 +19,13 @@ set -euo pipefail
 LABEL="com.cinepass.pathe-seats"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+INSTALL_DIR="$HOME/Library/Application Support/cinepass"
 INTERVAL="${INTERVAL:-1800}"
 
 if [ "${1:-}" = "--off" ]; then
   launchctl unload "$PLIST" 2>/dev/null || true
   rm -f "$PLIST"
-  echo "==> removed $LABEL"
+  echo "==> removed $LABEL (files kept in $INSTALL_DIR)"
   exit 0
 fi
 
@@ -40,9 +45,18 @@ if [ -z "$PYTHON" ]; then
 fi
 echo "    using $PYTHON"
 
-chmod +x "$REPO_DIR/scripts/pathe-seats-cron.sh"
+if [ ! -f "$REPO_DIR/.env.local" ]; then
+  echo "    missing $REPO_DIR/.env.local (Turso credentials)"
+  exit 1
+fi
 
-mkdir -p "$HOME/Library/LaunchAgents" "$HOME/logs"
+echo "==> installing scraper to $INSTALL_DIR..."
+mkdir -p "$INSTALL_DIR" "$HOME/Library/LaunchAgents" "$HOME/logs"
+cp "$REPO_DIR/scripts/pathe-seats.py" "$REPO_DIR/scripts/pathe-seats-cron.sh" "$INSTALL_DIR/"
+cp "$REPO_DIR/.env.local" "$INSTALL_DIR/.env"
+chmod 600 "$INSTALL_DIR/.env"
+chmod +x "$INSTALL_DIR/pathe-seats-cron.sh"
+
 cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,15 +67,15 @@ cat > "$PLIST" <<PLIST_EOF
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>$REPO_DIR/scripts/pathe-seats-cron.sh</string>
+        <string>$INSTALL_DIR/pathe-seats-cron.sh</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>CINEPASS_DIR</key>
-        <string>$REPO_DIR</string>
         <key>PATHE_PYTHON</key>
         <string>$PYTHON</string>
     </dict>
+    <key>WorkingDirectory</key>
+    <string>$INSTALL_DIR</string>
     <key>StartInterval</key>
     <integer>$INTERVAL</integer>
     <key>RunAtLoad</key>

@@ -1,9 +1,13 @@
 #!/bin/bash
 # Refresh Pathé seat availability. Meant to be run every ~30 min by launchd/cron
 # from a machine on a residential connection (see README-pathe-seats.md).
+#
+# Works both from the repo (scripts/) and from the copy the setup script installs
+# outside ~/Documents, where launchd is allowed to read files.
 set -uo pipefail
 
-REPO_DIR="${CINEPASS_DIR:-$HOME/Documents/cinepass}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SEATS_PY="$HERE/pathe-seats.py"
 LOG_FILE="${CINEPASS_SEATS_LOG:-$HOME/logs/pathe-seats.log}"
 mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -25,10 +29,10 @@ PYTHON=$(find_python) || {
   exit 1
 }
 
-cd "$REPO_DIR" || exit 1
+cd "$HERE" || exit 1
 {
   echo "[$(date '+%F %T')] --- run start ($PYTHON)"
-  "$PYTHON" scripts/pathe-seats.py "$@" 2>&1
+  "$PYTHON" "$SEATS_PY" "$@" 2>&1
   echo "[$(date '+%F %T')] --- run end (exit $?)"
 } >> "$LOG_FILE"
 
