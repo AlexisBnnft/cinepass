@@ -34,18 +34,19 @@ npm install
 npm run build
 '"
 
-echo "==> Uploading scrape script to VM..."
-scp "$SCRIPT_DIR/cinepass-scrape.sh" "$VM_HOST:~/cinepass-scrape.sh"
-ssh "$VM_HOST" "chmod +x ~/cinepass-scrape.sh"
+echo "==> Making the scrape script executable..."
+# Cron runs the script straight from the synced repo — a copy in ~ went stale once
+# and the daily run silently used an old version.
+ssh "$VM_HOST" "chmod +x ~/cinepass/scripts/cinepass-scrape.sh; rm -f ~/cinepass-scrape.sh"
 
 echo "==> Setting up cron job on VM..."
 ssh "$VM_HOST" bash -c "'
 mkdir -p ~/logs
-(crontab -l 2>/dev/null | grep -v cinepass-scrape ; echo \"0 8 * * * \$HOME/cinepass-scrape.sh\") | crontab -
+(crontab -l 2>/dev/null | grep -v cinepass-scrape ; echo \"0 8 * * * \$HOME/cinepass/scripts/cinepass-scrape.sh\") | crontab -
 echo \"Cron installed:\"
 crontab -l
 '"
 
 echo ""
 echo "==> Done! Scraper will run daily at 8:00 AM UTC."
-echo "    To test now:  ssh vm '~/cinepass-scrape.sh && tail ~/logs/cinepass-scrape.log'"
+echo "    To test now:  ssh vm '~/cinepass/scripts/cinepass-scrape.sh && tail ~/logs/cinepass-scrape.log'"

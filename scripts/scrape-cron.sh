@@ -1,4 +1,7 @@
 #!/bin/bash
+# LEGACY — kept for reference. The scrape now runs on the VM against the local site;
+# see scripts/cinepass-scrape.sh and scripts/setup-cron-vm.sh.
+#
 # Cron script to trigger CinePass scraping
 # Usage: Add to crontab with: crontab -e
 # Then add: 0 8,20 * * * /path/to/cinepass/scripts/scrape-cron.sh
