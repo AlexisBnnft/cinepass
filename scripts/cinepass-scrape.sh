@@ -12,8 +12,21 @@ mkdir -p "$HOME/logs"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
 
-# Kill any leftover Next.js server on this port
-lsof -ti:$PORT 2>/dev/null | xargs -r kill -9 2>/dev/null || true
+# Free the port. lsof alone missed a leftover next-server bound to *:3000 once,
+# which meant the scrape silently ran against a months-old build.
+free_port() {
+  local pids
+  pids=$(lsof -ti:$PORT 2>/dev/null || true)
+  if [ -z "$pids" ]; then
+    pids=$(ss -ltnpH "sport = :$PORT" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)
+  fi
+  if [ -n "$pids" ]; then
+    kill -9 $pids 2>/dev/null || true
+    sleep 2
+  fi
+}
+
+free_port
 
 log "Starting Next.js server..."
 cd "$CINEPASS_DIR"
@@ -21,7 +34,7 @@ npm start -- -p $PORT &>/dev/null &
 SERVER_PID=$!
 
 # Cleanup: always kill the server on exit
-trap "kill $SERVER_PID 2>/dev/null; lsof -ti:$PORT 2>/dev/null | xargs -r kill -9 2>/dev/null || true" EXIT
+trap 'kill $SERVER_PID 2>/dev/null || true; free_port' EXIT
 
 # Wait for server to be ready
 for i in $(seq 1 30); do
@@ -34,6 +47,14 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
+
+# Make sure it's *our* build answering (an unauthenticated call returns 401 if the
+# route exists, 404 if we're talking to a stale server).
+route_check=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:$PORT/api/pathe/discover?days=1" --max-time 30)
+if [ "$route_check" = "404" ]; then
+  log "FAIL: port $PORT is served by an outdated build (got 404 on /api/pathe/discover)"
+  exit 1
+fi
 
 log "Server ready, starting scrape..."
 response=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:$PORT/api/scrape?force=true" \

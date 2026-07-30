@@ -97,3 +97,4 @@ mieux vaut rien qu'un chiffre venant d'une autre salle.
 | `booking page did not hand out a JWT` | challenge non résolu : essayer `PATHE_HEADLESS=0` |
 | `no Chrome/Chromium binary found` | `export PATHE_CHROME_PATH=/chemin/vers/chrome` |
 | aucune place affichée sur le site | `pathe_sessions` vide → relancer `/api/pathe/discover` |
+| `pathe_sessions` ne se remplit pas via le cron | un ancien `next-server` peut squatter le port 3000 de la VM ; `cinepass-scrape.sh` le tue maintenant et refuse de tourner contre un build périmé |
